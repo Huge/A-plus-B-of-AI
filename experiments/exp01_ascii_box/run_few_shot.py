@@ -16,11 +16,11 @@ def load_config(cfg_path: str):
     return {}
 
 
-def build_prompt(examples_text: str, user_input: str) -> str:
+def build_prompt(examples_text: str, user_input: str, end_sentinel: str) -> str:
     return (
-        examples_text.strip()
-        + "\n\nNow format the following input in the same way."
-        + "\nInput:\n"
+        "Instruction: For each word in the input, output that word in a simple ASCII box. Output ONLY the boxes. No explanations. End your output with '" + end_sentinel + "'.\n\n"
+        + examples_text.strip()
+        + "\n\nInput:\n"
         + user_input.strip()
         + "\nOutput:\n"
     )
@@ -33,6 +33,24 @@ def save_to_json(data: Dict[str, Any], output_path: str) -> None:
     
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def extract_boxes(text: str) -> str:
+    lines = [ln.rstrip() for ln in text.splitlines()]
+    out_lines: List[str] = []
+    i = 0
+    def is_border(s: str) -> bool:
+        return len(s) >= 3 and s[0] == '+' and s[-1] == '+' and all(ch == '-' for ch in s[1:-1])
+    def is_middle(s: str) -> bool:
+        return len(s) >= 2 and s[0] == '|' and s[-1] == '|'
+    while i + 2 < len(lines):
+        a, b, c = lines[i], lines[i+1], lines[i+2]
+        if is_border(a) and is_middle(b) and is_border(c) and len(a) == len(c) == len(b):
+            out_lines.extend([a, b, c])
+            i += 3
+        else:
+            i += 1
+    return "\n".join(out_lines).strip()
 
 
 def get_output_dir() -> Path:
@@ -56,13 +74,15 @@ def main():
                   help="Maximum number of new tokens to generate")
     p.add_argument("--temperature", type=float, default=None, 
                   help="Sampling temperature (higher = more random)")
+    p.add_argument("--end-sentinel", type=str, default="<<END>>",
+                  help="String that marks the end of desired output")
     args = p.parse_args()
 
     # Load configuration
     cfg = load_config(args.config)
-    model_id = args.model_id or cfg.get("model_id", "Qwen/Qwen2.5-0.5B-Instruct")
-    max_new_tokens = args.max_new_tokens or int(cfg.get("max_new_tokens", 256))
-    temperature = args.temperature if args.temperature is not None else float(cfg.get("temperature", 0.2))
+    model_id = args.model_id or cfg.get("model_id", "Qwen/Qwen2.5-0.5B")
+    max_new_tokens = args.max_new_tokens or int(cfg.get("max_new_tokens", 128))
+    temperature = args.temperature if args.temperature is not None else float(cfg.get("temperature", 0.0))
     trust_remote_code = bool(cfg.get("trust_remote_code", True))
 
     # Prepare output structure
@@ -71,7 +91,6 @@ def main():
         "metadata": {
             "model_id": model_id,
             "max_new_tokens": max_new_tokens,
-            "temperature": temperature,
             "timestamp": timestamp,
             "config_file": os.path.basename(args.config)
         },
@@ -98,20 +117,28 @@ def main():
     )
 
     # Process inputs
+    end_sentinel = args.end_sentinel
     for user_input in args.inputs:
-        prompt = build_prompt(examples_text, user_input)
+        prompt = build_prompt(examples_text, user_input, end_sentinel)
         out_text = gen(
             prompt,
             max_new_tokens=max_new_tokens,
             temperature=temperature,
-            do_sample=True,
+            do_sample=False,
             pad_token_id=tokenizer.eos_token_id,
         )[0]["generated_text"][len(prompt):]
+
+        # Truncate at end sentinel if present
+        cut_idx = out_text.find(end_sentinel)
+        clean_out = (out_text[:cut_idx] if cut_idx != -1 else out_text).strip()
+        boxed_only = extract_boxes(clean_out)
 
         output_data["examples"].append({
             "input": user_input,
             "prompt": prompt,
-            "output": out_text.strip(),
+            "output": boxed_only or clean_out,
+            "raw_output": out_text.strip(),
+            "end_sentinel_found": cut_idx != -1,
             "timestamp": timestamp
         })
         
