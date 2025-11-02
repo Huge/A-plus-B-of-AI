@@ -1,0 +1,34 @@
+Task: For each word in the input, output that word in a simple ASCII box, one box per line.
+
+Example 1
+Input:
+hello world
+Output:
++-----+
+|hello|
++-----+
++-----+
+|world|
++-----+
+
+Example 2
+Input:
+Ahoj svete
+Output:
++----+
+|Ahoj|
++----+
++-----+
+|svete|
++-----+
+
+Example 3
+Input:
+GPT-4o mini
+Output:
++------+
+|GPT-4o|
++------+
++----+
+|mini|
++----+

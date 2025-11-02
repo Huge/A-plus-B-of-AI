@@ -1,0 +1,8 @@
+transformers>=4.44.0
+accelerate>=0.33.0
+peft>=0.12.0
+datasets>=2.20.0
+pyyaml>=6.0.1
+# Install torch per your platform (CPU/CUDA). Examples:
+# pip install torch --index-url https://download.pytorch.org/whl/cpu
+# pip install torch --index-url https://download.pytorch.org/whl/cu121
